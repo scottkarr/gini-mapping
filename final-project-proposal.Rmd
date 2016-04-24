@@ -1,0 +1,52 @@
+---
+title: "Comparitive Income Dispersion within the US"
+output:
+  html_document:
+    css: ./lab.css
+    fig_caption: yes
+    highlight: pygments
+    keep_md: yes
+    number_sections: yes
+    theme: cerulean
+    toc: yes
+  pdf_document: default
+  word_document: default
+---
+Scott Karr  Project #1
+
+#Introduction: 
+Is the dispersion of income within the United States different based upon regional, geographic political and economic boundaries?
+Answering this question has growth and governance implications for our country, particularly to the degree that concentrated
+within an an economy implies a corresponding deficit in growth potential.  In order to answer the later question,
+an analysis of the former question must be analyzed.
+
+GINI is an internationally recognized measure of income dispersion within a specified geographic area.  Income inequality 
+has also been a topical discussion in recent years and is a key measure of income dispersion.
+
+The Census Bureau publishes data sets which track the GINI index at different levels of geographic granularity including 
+region, state, congressional district and metropolitan statical area.  This study analyzes the income dispersion within the
+United States using Census data and in particular, income data collected for the American Community Survey.  The Census Bureau 
+provides the followng tool for acquiring data sets . . .
+
+http://factfinder.census.gov/faces/nav/jsf/pages/guided_search.xhtml
+
+#Data:
+This is an observational study of data collected by surveyors by the US Census Bureau.  The presumption is that each observation 
+is an independent event of objective fact.  The Census Bureau's survey techniques rely sampling, so the initial data-set is based 
+to a degree on statiscial inference and imputed data.
+
+All data used in this survey was sourced from the American Community Survey published by the US Census Bureau.  4 distinct data 
+sets generated using the Census Bureau's utility.  Except for the Regional data set all other data sets have more than 30 independent
+observations.  It is therefore expected that a near normal sampling distribution applies to the data collected.
+    
+    * Gini Indicies by Region
+    * Gini Indicies by State
+    * Gini Indicies by Congressional District
+    * Gini Indicies by Metropolitan Statistical Area  
+
+The following cases correspond to each geographic level data set above:
+      
+    *   4 Regions:  Northeast, Midwest, South and West + US Oveall 
+    *  50 States
+    * 436 Congressional Districts
+    * 916 Gini Indicies by Metropolitan Statistical Area 

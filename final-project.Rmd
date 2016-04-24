@@ -1,0 +1,288 @@
+---
+title: "Analyzing and Mapping data in R"
+author: "Scott Karr"
+date: "April 20, 2016"
+output: 
+  html_document: 
+    fig_caption: yes
+---
+
+In this tutorial, we’ll learn how to analyze basic survey data and plot the results on a map using R, using the March PCM data as an example. This illustrates the use of R as a front-to-end solution for reading, exploring, and cleaning the data, performing a statistical analysis, and summarizing the results.
+
+In addition to the packages loaded in this script, you will need the PCM results and shapefiles.
+[model](https://rstudio-pubs-static.s3.amazonaws.com/78148_6dd49b5dab4c4f5a8b1a74e5893ff17d.html)
+
+#other resources
+
+This tutorial is not a complete explanation of R syntax or it’s plotting functions, or on survey statistics. A great resource for learning about R and plotting maps is the spatial.ly blog. The survey analysis is done with the survey package, which has an accompanying journal article, a nice companion book, with very few equations, and even a online course for those who want to learn more about how to analyze survey data.
+
+#Reading in the data
+First, we’ll load the neccesary packages and data into R:
+I'm setting the working directory to where I've stored my shape files and survey results
+
+```{r config-show, eval=FALSE, include=TRUE}
+setwd("~/IS607Spring2016/project-final")
+#load packages
+install.packages("gpclib")
+library(maptools) # a package for dealing with shapefiles/spatial data
+library(grid)
+library(survey) # a package for analyzing clustered survey data
+library(ggplot2) # a for making pretty plots
+library(RColorBrewer) # a package that has some pretty colors for the maps
+library(dplyr) # a useful package for data manipulation
+```
+
+```{r config-load, eval=TRUE, include=FALSE}
+setwd("~/IS607Spring2016/project-final")
+#load packages
+library(maptools) # a package for dealing with shapefiles/spatial data
+library(grid)
+library(survey) # a package for analyzing clustered survey data
+library(ggplot2) # a for making pretty plots
+library(RColorBrewer) # a package that has some pretty colors for the maps
+library(dplyr) # a useful package for data manipulation
+```
+
+```{r load-csv-data, eval=TRUE, include=FALSE}
+#pakistan tutorial file
+dir.pcm.district <- paste0(getwd(),"/pks-files")
+dat.pcm.district <- read.csv(paste0(dir.pcm.district,"/apex_pcm_march_2015.csv"), header=TRUE,stringsAsFactors=FALSE)
+#census bureau data for states at 20m
+#*500k = 1:500,000
+#*  5m = 1:5,000,000
+#* 20m = 1:20,000,000
+dir.usa.state <- paste0(getwd(),"/usa-files")
+dat.usa.state <- read.csv(paste0(dir.usa.state,"/gini_2014_state.csv"), header=TRUE,stringsAsFactors=FALSE)
+#dir.ind.state <- paste0(getwd(),"/ind-shpfiles")
+#ind.regions <- read.csv(dir.ind.state,"", header=TRUE,stringsAsFactors=FALSE)
+```
+
+```{r load-shape-files, eval=TRUE, include=FALSE}
+dir.pcm.district.shpfiles <- paste0(getwd(),"/pks-files")
+map.pcm.district <- readShapePoly(paste0(dir.pcm.district.shpfiles,"/pakistan_district.shp"))
+
+dir.usa.states.shpfiles <- paste0(getwd(),"/usa-files/cb_2014_us_state_20m")
+map.usa.states <- readShapePoly(paste0(dir.usa.states.shpfiles,"/cb_2014_us_state_20m.shp"))
+
+dir.ind.regions.shpfiles <- paste0(getwd(),"/ind-files/IND_adm_shp")
+map.ind.regions0 <- readShapePoly(paste0(dir.ind.regions.shpfiles,"/IND_adm0.shp"))
+map.ind.regions1 <- readShapePoly(paste0(dir.ind.regions.shpfiles,"/IND_adm1.shp"))
+map.ind.regions2 <- readShapePoly(paste0(dir.ind.regions.shpfiles,"/IND_adm2.shp"))
+map.ind.regions3 <- readShapePoly(paste0(dir.ind.regions.shpfiles,"/IND_adm3.shp"))
+
+#ind.region.map <- readShapePoly("pakistan_district.shp")
+```
+
+#Taking a look at the data
+First, lets take a look at the data, using the str() command. The data consists of location info (province, district, uc, village) for 63,758 children, along with whether the child was vaccinated in the previous campaign according to caregiver recall (vaccinated) or by finger marked (finger)
+```{r show-structure, eval=TRUE}
+str(dat.pcm.district)
+str(dat.usa.state)
+```
+
+The table() function will count how many times a variable takes on each value. We can use it to calculate how many children are in each province, or in each district
+```{r}
+table(dat.pcm.district$province)
+table(dat.usa.state$STATE)
+```
+
+I didn't want to print all the districts, so take a subset of the first 10, using the subset `[1:10]`, where and `1:10` indicating I wanted the first through the 10th entry.
+table(dat.pcm.district$district)[1:10] 
+
+#removing numeric districts
+```{r cleanup1, eval=TRUE}
+pcm <- filter(dat.pcm.district, district != 347, district != 367) 
+# equvalent to
+#dat.pcm.district <- subset(dat.pcm.district,!(dat.pcm.district$district %in% c(347,367) ))
+# or
+#dat.pcm.district <- dat.pcm.district[(dat.pcm.district$district != 347) & (dat.pcm.district$district != 347),] 
+```
+
+Note that some districts and provinces are given as numbers in the above. At this point I would ask the person who supplied the data for the names of these districts, or I might try to find out what district they correspond to by looking at the tehsil or UC. Here, I just removed them.
+
+We can use the summary function to tell us more about a numeric variable:
+
+notice age is stored as a character in the above, I'll first change it to a numeric variable:
+```{r cleanup3, eval=TRUE}
+dat.pcm.district$age <- as.numeric(dat.pcm.district$age)
+```
+
+Some NAs are returned when I convert age to a character. This means some of the ages in the file were not numbers.
+```{r summarize, eval=TRUE}
+summary(dat.pcm.district$age)
+```
+
+#Analyzing survey results
+Now, we want to analyze the results from the survey. There are a number of packages available to do this, but the best in my opinion is the survey package. You can see some examples of this package by looking at the vignettes and help pages (help(package="survey") is a good place to start).
+
+This is more of an R tutorial than a survey course, so I won’t dwell on the details.
+```{r analyze, eval=TRUE}
+#changing an option of the package, so it removes districts with only 1 cluster, rather than throw an error
+options(survey.lonely.psu="remove") 
+# change `finger' to a 0/1 numeric variable
+dat.pcm.district$finger <- as.numeric(dat.pcm.district$finger=="Yes")
+# Create a `survey.design` object. Basically telling R about the design of the survey, so it knows how to analyze it.
+# PCM is a cluster survey, which (I believe) is stratified by district. I choose `probs~1', since PCM uses PPS to select districts.
+pcm.svy <- svydesign(~village, strata=~district, nest=TRUE, probs = ~1,data = dat.pcm.district)
+# svymean calculates the proportion of fingers marked.
+# To apply svymean to each district, I wrap it in `svyby':
+result <- svyby(~finger, ~district,design=pcm.svy,deff="replace",svymean,vartype=c("ci","se"))
+#result is a dataframe which gives coverage and corresponding standard error, confidence interval, and design effect for each district
+head(result)
+```
+
+Plotting in R (in general)
+Now, we can save the result of the analyisis and stop here:
+
+write.csv(result, file="apex_pcm_march_2015_coverage_by_district.csv")
+From there, we could plot the data in, e.g. Excell, or ArcGIS. Here, I’ll show you how to plot the data in R.
+
+There are LOTS of ways to plot data in R. R comes out of the box with `base’ graphics:
+
+#histogram of coverage
+```{r hist, eval=TRUE}
+hist(x = result$finger, xlab="Coverage")
+```
+
+##boxplot:
+```{r boxplot, eval=TRUE}
+boxplot(result$finger)
+```
+
+##scatter plot of the `design effect' vs standard error:
+```{r}
+plot(x=result$DEff,y=result$se)
+```
+
+## we can even plot the map:
+```{r plot, eval=TRUE}
+plot(map.pcm.district)
+plot(map.ind.regions0)
+plot(map.ind.regions1)
+plot(map.ind.regions2)
+plot(map.ind.regions3)
+```
+
+R also comes with add-on plotting packages, the most popular of which is ggplot2. gg stands for the grammer of graphics, and is a structured language to describe graphs. ggplot works by mapping variables in a data frame to aesthetic properties on a graph. All ggplots start with the ggplot() function, and are built up by adding layers to that plot:
+
+```{r ggplot-hist, eval=TRUE}
+ggplot(aes(x=finger),data=result) + geom_histogram()
+ggplot(aes(x=DEff.finger,y=se),data=result) + geom_point() + geom_smooth()
+```
+
+Plotting maps in ggplot with geom_map()
+Here, we want to make a map. This is done by adding a geom_map() layer to a ggplot, in which we have to specify a map_id which links the survey results to places on a maps.
+
+first need to change the `map' object in to a data frame, and rename long and lat to x and y:
+Note, here I'm setting region="district", which matches the district variable in the survey results:
+```{r ggplot-map}
+gpclibPermit()
+gpclibPermitStatus()
+#
+map.df <- fortify(map.pcm.district,region="district")
+map.df <- rename(map.df,x=long,y=lat)
+#
+g <- ggplot(data=result) + geom_map(aes(fill=finger, map_id=district),map=map.df) + expand_limits(map.df)
+g
+#
+map.df <- fortify(map.usa.states,region="NAME")
+map.df <- rename(map.df,x=long,y=lat)
+#
+latlimits <- c(25, 50)
+longlimits <- c(-150, -50)
+
+g <- ggplot(data=dat.usa.state) + geom_map(aes(fill=GINI, map_id=STATE),map=map.df) +
+  coord_cartesian(xlim = longlimits, ylim = latlimits) 
+g
+```
+
+Now, in order to make this pretty, we need to do a lot of tweaking. The good thing though, is that once you do this once, you can save the code and re-use it to make many similar types of plots. First, let’s change the color scheme and background. Note, we can take the graph (which I called `g’) and just add layers/options to it.
+
+```{r ggplot-map2}
+mycolors <- brewer.pal(9,"BrBG")#brewer.pal(9,"RdYlGn")
+g + theme_bw() + scale_fill_gradientn(name="Coverage", colours = mycolors)
+```
+
+Now, a number of districts are missing from the plot - this is because they aren’t included in the survey. We can include them in the plot by adding them into the results with NA as their coverage value:
+
+```{r ggplot-map3}
+map.df <- fortify(map.pcm.district,region="district")
+map.df <- rename(map.df,x=long,y=lat)
+result <- merge(result,map.pcm.district@data,all.y = T)
+g <- ggplot(data=result) + 
+  geom_map(aes(fill=finger, map_id=district),map=map.df) + expand_limits(map.df)+ 
+  theme_bw() + 
+  scale_fill_gradientn(name="Coverage", colours = mycolors,na.value = "grey",limits=c(.4,1))
+g
+```
+
+
+I often add a bunch of other options to make it prettier:
+```{r ggplot-map4}
+pak_cities <- data.frame(
+  city= c("Islamabad","Lahore","Quetta","Peshawar","Karachi"),
+  long=c(73.066667,  74.343611, 67.000000, 71.583333,67.01),
+  lat=c(33.716667, 31.549722, 30.183333, 34.016667,24.86),
+  hjust=c(0,0,1,1,1),
+  vjust=c(-0.5,-0.5,-0.5,-0.5,0)
+)
+pak_format <- list(
+  xlab(""), 
+  ylab(""),
+  coord_map("polyconic"),
+  geom_point(aes(long,lat),data=pak_cities,size=2),
+  geom_text(aes(x=long,y=lat,label=city,hjust=hjust,vjust=vjust),size=3,data=pak_cities),
+  theme_bw(),
+  theme(legend.justification=c(1,0),legend.position=c(1,0), legend.background=element_rect(colour="black"))
+)
+
+g + pak_format + ggtitle("Coverage, based on Finger Marking")
+```
+
+
+Now, for instance, if I want to map the lower confidence limit, rather than the coverage, I can just copy my code from above, and change fill=finger to fill=ci_l.
+```{r ggplot-map5}
+ggplot(data=result) + 
+  geom_map(aes(fill=ci_l, map_id=district),map=map.df) + expand_limits(map.df)+ 
+  theme_bw() + 
+  scale_fill_gradientn(name="Coverage", colours = mycolors,na.value = "grey",limits=c(.4,1)) + 
+  pak_format + ggtitle("Coverage, based on lower confidence limit")
+```
+
+We could also look at the design effect by district, which gives evidence for sub-district heterogeneity. Again, I just do this by replacing fill=ci_l with fill=DEff.finger:
+
+```{r ggplot-map6}
+ggplot(data=result) + 
+  geom_map(aes(fill=DEff.finger, map_id=district),map=map.df) + 
+  expand_limits(map.df)+ 
+  theme_bw()+
+  scale_fill_gradientn(name="Coverage", colours = rev(mycolors),na.value = "grey") + 
+  pak_format + ggtitle("Design Effect, by district")
+```
+
+Khushab in Punjab stands out in the map. Drilling down,we can find that there are villages where nearly every child was missed, while most villages had 100% coverage.
+
+We can get at this with a few dplyr commands, which filter the pcm data to the right district, separate it into groups defined by village, and summarise the coverage in each of those groups, and the arrange the results by coverage:
+```{r summarize-khushab-Punjab, eval=TRUE}
+dat.pcm.district %>% filter(district == "khushab") %>% 
+  group_by(village) %>% 
+  summarise(coverage = mean(finger),
+            vaccinated=sum(finger),
+            total=length(finger)) %>% 
+  arrange(coverage)
+```
+  
+Extra credit: demographic characteristics of survey population, and biases in vaccination
+Here, I’m calculating the average age in each district, which might tell us about systematic biases in the survey. This is done in nearly an identical way to the analysis of coverage.
+```{r ggplot-map7, eval=TRUE}
+result2 <- svyby(~age, ~district,design=pcm.svy,deff="replace",svymean,vartype=c("se","ci"))
+result2 <- merge(result2,map.pcm.district@data,all.y=T)
+
+mycolors <- brewer.pal(9,"BrBG")
+ggplot(data=result2) + 
+  geom_map(aes(fill=age, map_id=district),map=map.df) + expand_limits(map.df)+ 
+  theme_bw() + 
+  scale_fill_gradientn(name="Average age", colours = mycolors,na.value = "grey") + 
+  pak_format
+```
+
